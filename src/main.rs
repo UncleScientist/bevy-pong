@@ -1,3 +1,4 @@
+use bevy::window::WindowResized;
 use bevy::{
     core_pipeline::clear_color::ClearColorConfig, prelude::*, sprite::collide_aabb::collide,
 };
@@ -6,12 +7,16 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_startup_system(setup)
+        .add_system(window_resize)
         .add_system(bevy::window::close_on_esc)
         .add_system(move_ball)
         .add_system(handle_input)
         .add_system(collision)
         .run();
 }
+
+#[derive(Component)]
+struct ScoreDisplay;
 
 #[derive(Component)]
 struct Direction {
@@ -28,15 +33,30 @@ struct Paddle {
     player: Player,
 }
 
+#[derive(Component)]
+struct Score {
+    player: Player,
+    points: usize,
+}
+
 const BALL_SIZE: f32 = 25.0;
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+    let text_style = TextStyle {
+        font,
+        font_size: 60.0,
+        color: Color::TEAL,
+    };
+
     commands.spawn(Camera2dBundle {
         camera_2d: Camera2d {
             clear_color: ClearColorConfig::Custom(Color::BLACK),
         },
         ..default()
     });
+
+    // The bouncing ball
     let sprite = Sprite {
         color: Color::CYAN,
         custom_size: Some(Vec2::new(BALL_SIZE, BALL_SIZE)),
@@ -68,6 +88,17 @@ fn setup(mut commands: Commands) {
             player: Player::Left,
         },
     ));
+    commands.spawn((
+        Text2dBundle {
+            text: Text::from_section("L0", text_style.clone()),
+            ..default()
+        },
+        Score {
+            player: Player::Left,
+            points: 0,
+        },
+        ScoreDisplay {},
+    ));
 
     // player right
     let sprite = Sprite {
@@ -84,6 +115,17 @@ fn setup(mut commands: Commands) {
         Paddle {
             player: Player::Right,
         },
+    ));
+    commands.spawn((
+        Text2dBundle {
+            text: Text::from_section("R0", text_style),
+            ..default()
+        },
+        Score {
+            player: Player::Right,
+            points: 0,
+        },
+        ScoreDisplay {},
     ));
 }
 
@@ -178,6 +220,22 @@ fn collision(
         .is_some()
         {
             ball_dir.dir.x = -ball_dir.dir.x;
+        }
+    }
+}
+
+fn window_resize(
+    mut resizer: EventReader<WindowResized>,
+    mut query: Query<(&mut Transform, &Score, With<ScoreDisplay>)>,
+) {
+    if let Some(event) = resizer.iter().next() {
+        for (mut text_pos, score, _) in query.iter_mut() {
+            text_pos.translation.y = event.height / 2.0 - 100.0;
+
+            match score.player {
+                Player::Left => text_pos.translation.x = -(event.width / 4.0),
+                Player::Right => text_pos.translation.x = event.width / 4.0,
+            }
         }
     }
 }
