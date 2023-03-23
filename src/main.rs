@@ -1,4 +1,6 @@
-use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
+use bevy::{
+    core_pipeline::clear_color::ClearColorConfig, prelude::*, sprite::collide_aabb::collide,
+};
 
 fn main() {
     App::new()
@@ -7,6 +9,7 @@ fn main() {
         .add_system(bevy::window::close_on_esc)
         .add_system(move_ball)
         .add_system(handle_input)
+        .add_system(collision)
         .run();
 }
 
@@ -25,6 +28,8 @@ struct Paddle {
     player: Player,
 }
 
+const BALL_SIZE: f32 = 25.0;
+
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle {
         camera_2d: Camera2d {
@@ -34,7 +39,7 @@ fn setup(mut commands: Commands) {
     });
     let sprite = Sprite {
         color: Color::CYAN,
-        custom_size: Some(Vec2::new(25.0, 25.0)),
+        custom_size: Some(Vec2::new(BALL_SIZE, BALL_SIZE)),
         ..default()
     };
     commands.spawn((
@@ -151,6 +156,28 @@ fn handle_input(
                     xform.translation.y = new_loc;
                 }
             }
+        }
+    }
+}
+
+fn collision(
+    paddles: Query<(&Paddle, &Transform)>,
+    mut ball_pos: Query<(&mut Direction, &Transform)>,
+) {
+    let (mut ball_dir, ball_pos) = ball_pos.single_mut();
+    let ball_size = Vec2::new(BALL_SIZE, BALL_SIZE);
+    let paddle_size = Vec2::new(25.0, 100.0);
+
+    for (_, pos) in paddles.iter() {
+        if collide(
+            ball_pos.translation,
+            ball_size,
+            pos.translation,
+            paddle_size,
+        )
+        .is_some()
+        {
+            ball_dir.dir.x = -ball_dir.dir.x;
         }
     }
 }
