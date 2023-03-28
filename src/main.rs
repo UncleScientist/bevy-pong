@@ -13,7 +13,7 @@ fn main() {
         .add_system(move_ball)
         .add_system(handle_input)
         .add_system(collision)
-        .add_system(handle_score)
+        .add_system(handle_score.run_if(on_event::<IncrementScore>()))
         .add_event::<IncrementScore>()
         .run();
 }
@@ -251,29 +251,23 @@ fn handle_score(
     mut scores: EventReader<IncrementScore>,
     mut query: Query<(&mut Text, &mut Score)>,
 ) {
-    let mut scored = false;
-
     for score in scores.iter() {
         for (mut text, mut which) in query.iter_mut() {
             match score {
                 IncrementScore(Player::Left) if which.player == Player::Left => {
                     which.points += 1;
                     text.sections[0].value = format!("{}", which.points);
-                    scored = true;
                 }
                 IncrementScore(Player::Right) if which.player == Player::Right => {
                     which.points += 1;
                     text.sections[0].value = format!("{}", which.points);
-                    scored = true;
                 }
                 _ => {}
             }
         }
     }
 
-    if scored {
-        let (_, mut xform) = ball_pos.get_single_mut().expect("missing ball");
-        xform.translation.x = 0.0;
-        xform.translation.y = 0.0;
-    }
+    let (_, mut xform) = ball_pos.get_single_mut().expect("missing ball");
+    xform.translation.x = 0.0;
+    xform.translation.y = 0.0;
 }
