@@ -1,3 +1,4 @@
+use bevy::sprite::collide_aabb::Collision;
 use bevy::window::WindowResized;
 use bevy::{
     core_pipeline::clear_color::ClearColorConfig, prelude::*, sprite::collide_aabb::collide,
@@ -12,21 +13,23 @@ fn main() {
         .add_system(move_ball)
         .add_system(handle_input)
         .add_system(collision)
+        .add_system(handle_score)
+        .add_event::<IncrementScore>()
         .run();
 }
-
-#[derive(Component)]
-struct ScoreDisplay;
 
 #[derive(Component)]
 struct Direction {
     dir: Vec2,
 }
 
+#[derive(PartialEq, Eq)]
 enum Player {
     Left,
     Right,
 }
+
+struct IncrementScore(Player);
 
 #[derive(Component)]
 struct Paddle {
@@ -40,6 +43,7 @@ struct Score {
 }
 
 const BALL_SIZE: f32 = 25.0;
+const BALL_SPEED: f32 = 400.0;
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
@@ -68,7 +72,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         },
         Direction {
-            dir: Vec2::new(200.0, 200.0),
+            dir: Vec2::new(BALL_SPEED, BALL_SPEED),
         },
     ));
 
@@ -90,14 +94,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     ));
     commands.spawn((
         Text2dBundle {
-            text: Text::from_section("L0", text_style.clone()),
+            text: Text::from_section("0", text_style.clone()),
             ..default()
         },
         Score {
             player: Player::Left,
             points: 0,
         },
-        ScoreDisplay {},
     ));
 
     // player right
@@ -118,20 +121,20 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     ));
     commands.spawn((
         Text2dBundle {
-            text: Text::from_section("R0", text_style),
+            text: Text::from_section("0", text_style),
             ..default()
         },
         Score {
             player: Player::Right,
             points: 0,
         },
-        ScoreDisplay {},
     ));
 }
 
 fn move_ball(
     time: Res<Time>,
     mut ball_pos: Query<(&mut Direction, &mut Transform)>,
+    mut inc_score: EventWriter<IncrementScore>,
     windows: Query<&Window>,
 ) {
     let window = windows.single();
@@ -141,20 +144,23 @@ fn move_ball(
     let dir = direction.dir * time.delta_seconds();
 
     let new_pos = Vec2::new(xform.translation.x, xform.translation.y) + dir;
-    if new_pos.y < -height || new_pos.y > height {
-        direction.dir.y = -direction.dir.y;
-    }
-    if new_pos.x < -width || new_pos.x > width {
-        direction.dir.x = -direction.dir.x;
+    if new_pos.y < -height {
+        direction.dir.y = direction.dir.y.abs();
+    } else if new_pos.y > height {
+        direction.dir.y = -(direction.dir.y.abs());
     }
 
-    let cur_pos = Vec2::new(xform.translation.x, xform.translation.y) + dir;
-
-    xform.translation.x = cur_pos.x;
-    xform.translation.y = cur_pos.y;
+    if new_pos.x < -width {
+        inc_score.send(IncrementScore(Player::Right));
+    } else if new_pos.x > width {
+        inc_score.send(IncrementScore(Player::Left));
+    } else {
+        let cur_pos = Vec2::new(xform.translation.x, xform.translation.y) + dir;
+        xform.translation.x = cur_pos.x;
+        xform.translation.y = cur_pos.y;
+    }
 }
 
-const PADDLE_SPEED: f32 = 300.0;
 const PADDLE_MARGIN: f32 = 25.0;
 
 fn handle_input(
@@ -173,9 +179,9 @@ fn handle_input(
 
                 let new_loc = xform.translation.y
                     + if keys.pressed(KeyCode::W) {
-                        time.delta_seconds() * PADDLE_SPEED
+                        time.delta_seconds() * 1.5 * BALL_SPEED
                     } else if keys.pressed(KeyCode::S) {
-                        -time.delta_seconds() * PADDLE_SPEED
+                        -time.delta_seconds() * 1.5 * BALL_SPEED
                     } else {
                         0.0
                     };
@@ -188,9 +194,9 @@ fn handle_input(
 
                 let new_loc = xform.translation.y
                     + if keys.pressed(KeyCode::O) {
-                        time.delta_seconds() * PADDLE_SPEED
+                        time.delta_seconds() * 1.5 * BALL_SPEED
                     } else if keys.pressed(KeyCode::L) {
-                        -time.delta_seconds() * PADDLE_SPEED
+                        -time.delta_seconds() * 1.5 * BALL_SPEED
                     } else {
                         0.0
                     };
@@ -211,25 +217,25 @@ fn collision(
     let paddle_size = Vec2::new(25.0, 100.0);
 
     for (_, pos) in paddles.iter() {
-        if collide(
+        match collide(
             ball_pos.translation,
             ball_size,
             pos.translation,
             paddle_size,
-        )
-        .is_some()
-        {
-            ball_dir.dir.x = -ball_dir.dir.x;
+        ) {
+            Some(Collision::Left) => ball_dir.dir.x = -(ball_dir.dir.x.abs()),
+            Some(Collision::Right) => ball_dir.dir.x = ball_dir.dir.x.abs(),
+            _ => {}
         }
     }
 }
 
 fn window_resize(
     mut resizer: EventReader<WindowResized>,
-    mut query: Query<(&mut Transform, &Score, With<ScoreDisplay>)>,
+    mut query: Query<(&mut Transform, &Score)>,
 ) {
     if let Some(event) = resizer.iter().next() {
-        for (mut text_pos, score, _) in query.iter_mut() {
+        for (mut text_pos, score) in query.iter_mut() {
             text_pos.translation.y = event.height / 2.0 - 100.0;
 
             match score.player {
@@ -237,5 +243,37 @@ fn window_resize(
                 Player::Right => text_pos.translation.x = event.width / 4.0,
             }
         }
+    }
+}
+
+fn handle_score(
+    mut ball_pos: Query<(&Direction, &mut Transform)>,
+    mut scores: EventReader<IncrementScore>,
+    mut query: Query<(&mut Text, &mut Score)>,
+) {
+    let mut scored = false;
+
+    for score in scores.iter() {
+        for (mut text, mut which) in query.iter_mut() {
+            match score {
+                IncrementScore(Player::Left) if which.player == Player::Left => {
+                    which.points += 1;
+                    text.sections[0].value = format!("{}", which.points);
+                    scored = true;
+                }
+                IncrementScore(Player::Right) if which.player == Player::Right => {
+                    which.points += 1;
+                    text.sections[0].value = format!("{}", which.points);
+                    scored = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if scored {
+        let (_, mut xform) = ball_pos.get_single_mut().expect("missing ball");
+        xform.translation.x = 0.0;
+        xform.translation.y = 0.0;
     }
 }
