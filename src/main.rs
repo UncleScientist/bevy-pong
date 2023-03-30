@@ -6,7 +6,13 @@ use bevy::{
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                fit_canvas_to_parent: true,
+                ..default()
+            }),
+            ..default()
+        }))
         .add_startup_system(setup)
         .add_system(window_resize)
         .add_system(bevy::window::close_on_esc)
@@ -45,7 +51,12 @@ struct Score {
 const BALL_SIZE: f32 = 25.0;
 const BALL_SPEED: f32 = 400.0;
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>, windows: Query<&Window>) {
+    let window = windows.single();
+    let (height, width) = (window.height(), window.width());
+    let score_pos_y = height / 2.0 - 100.0;
+    let score_pos_x = width / 4.0;
+
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
     let text_style = TextStyle {
         font,
@@ -92,9 +103,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             player: Player::Left,
         },
     ));
+
+    // player left score
     commands.spawn((
         Text2dBundle {
             text: Text::from_section("0", text_style.clone()),
+            transform: Transform::from_xyz(-score_pos_x, score_pos_y, 0.0),
             ..default()
         },
         Score {
@@ -119,9 +133,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             player: Player::Right,
         },
     ));
+
+    // player right score
     commands.spawn((
         Text2dBundle {
             text: Text::from_section("0", text_style),
+            transform: Transform::from_xyz(score_pos_x, score_pos_y, 0.0),
             ..default()
         },
         Score {
